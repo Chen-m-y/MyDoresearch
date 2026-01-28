@@ -6,7 +6,7 @@
 # 使用方法: docker-compose up -d
 #
 
-version: '3.8'
+
 
 services:
   # =================================
@@ -20,6 +20,7 @@ services:
       - "5000:5000"
     environment:
       - FLASK_ENV=production
+      - PYTHONPATH=/app
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DATABASE_PATH=/app/data/papers.db
       - DATA_DIR=/app/data
