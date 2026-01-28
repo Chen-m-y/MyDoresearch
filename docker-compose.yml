@@ -1,0 +1,132 @@
+# =================================
+# DoResearch 项目 Docker Compose 配置
+# =================================
+#
+# 本地开发环境一键启动所有服务
+# 使用方法: docker-compose up -d
+#
+
+version: '3.8'
+
+services:
+  # =================================
+  # 主后端服务 (doresearch)
+  # 端口: 5000
+  # =================================
+  doresearch:
+    build: ./doresearch
+    container_name: doresearch-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DATABASE_PATH=/app/data/papers.db
+      - DATA_DIR=/app/data
+      - PDF_DIR=/app/data/pdfs
+      - LOG_DIR=/app/data/logs
+      - PAPER_FETCHER_SERVICE_URL=http://do-research-fetch:8000
+    volumes:
+      # 数据持久化：本地文件与容器同步
+      - ./doresearch/data:/app/data
+      - ./doresearch/logs:/app/data/logs
+    depends_on:
+      do-research-fetch:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - doresearch-network
+
+  # =================================
+  # 论文获取微服务 (DoResearchFetch)
+  # 端口: 8000
+  # 依赖: Redis
+  # =================================
+  do-research-fetch:
+    build: ./DoResearchFetch
+    container_name: doresearch-fetch
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379
+      - IEEE_API_KEY=${IEEE_API_KEY:-}
+      - ELSEVIER_API_KEY=${ELSEVIER_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      # 日志持久化
+      - ./DoResearchFetch/logs:/app/logs
+    networks:
+      - doresearch-network
+
+  # =================================
+  # Redis 缓存服务
+  # 端口: 6379
+  # =================================
+  redis:
+    image: redis:7-alpine
+    container_name: doresearch-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - doresearch-network
+
+  # =================================
+  # 前端 Web 应用 (DoResearchWeb)
+  # 端口: 5173
+  # =================================
+  do_research_web:
+    build: ./DoResearchWeb
+    container_name: doresearch-web
+    ports:
+      - "5173:5173"
+    environment:
+      # 本地开发使用 localhost，生产环境请修改为实际域名
+      - VITE_API_BASE_URL=http://localhost:5000
+      - VITE_ALLOWED_HOSTS=localhost,127.0.0.1
+    restart: unless-stopped
+    # 开发模式：源代码热更新
+    volumes:
+      - ./DoResearchWeb/src:/app/src
+    networks:
+      - doresearch-network
+
+# =================================
+# 数据卷定义
+# =================================
+volumes:
+  redis_data:
+    driver: local
+
+# =================================
+# 网络定义
+# =================================
+networks:
+  doresearch-network:
+    driver: bridge

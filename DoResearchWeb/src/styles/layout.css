@@ -1,0 +1,19 @@
+/* 布局相关的CSS变量 */
+:root {
+  /* 底部导航栏 */
+  --bottom-nav-height: 48px;
+  --bottom-nav-spacing: 6; /* MUI spacing units */
+  
+  /* 顶部应用栏 */
+  --app-bar-height: 64px;
+  --app-bar-spacing: 8;
+  
+  /* 侧边栏 */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 64px;
+  
+  /* Z-index层级 */
+  --z-bottom-nav: 1100;
+  --z-app-bar: 1200;
+  --z-drawer: 1300;
+}

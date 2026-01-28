@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  do_research_web:
+    image: do_research_web:latest
+    build: .
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=https://research.hxgpark.com
+      - VITE_ALLOWED_HOSTS=research.hxgpark.com
+    restart: unless-stopped

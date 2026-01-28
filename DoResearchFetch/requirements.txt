@@ -1,0 +1,8 @@
+Flask
+requests
+asyncio
+aiohttp
+dataclasses
+beautifulsoup4
+gunicorn
+gevent

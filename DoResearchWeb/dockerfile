@@ -1,0 +1,27 @@
+# 使用一个轻量的 Node.js Alpine 镜像
+FROM node:20-alpine
+
+# 在容器内创建一个工作目录
+WORKDIR /app
+
+# 复制 package.json 和 package-lock.json
+# 这样可以利用Docker缓存，如果依赖没变，则无需重新安装
+COPY package*.json ./
+
+# 安装所有依赖（包括开发依赖，因为Vite是开发依赖）
+RUN npm install
+
+# 将项目的所有源代码复制到工作目录
+# （注意：本地的 node_modules 会被 .dockerignore 文件忽略，不会被复制）
+COPY . .
+
+# 创建非root用户
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+RUN chown -R nodejs:nodejs /app
+USER nodejs
+
+# 暴露 Vite 开发服务器的默认端口
+EXPOSE 5173
+
+# 容器启动时运行的命令
+CMD ["npm", "run", "dev"]
