@@ -248,6 +248,8 @@ def get_subscription_sync_history(subscription_id: int):
 @handle_api_error
 def get_subscription_stats(subscription_id: int):
     """获取单个订阅的完整统计信息（对等feeds统计）"""
+    import sqlite3
+    
     user_id = get_current_user_id()
     
     # 验证用户是否有权限访问该订阅
@@ -258,9 +260,11 @@ def get_subscription_stats(subscription_id: int):
             'error': '订阅不存在或无权限访问'
         }), 404
     
-    conn = subscription_service.subscription_manager.get_connection()
+    # ✅ 修复: 使用 papers.db 查询论文数据
+    papers_conn = sqlite3.connect(DATABASE_PATH)
+    papers_conn.row_factory = sqlite3.Row
     try:
-        c = conn.cursor()
+        c = papers_conn.cursor()
         
         # 基础统计
         c.execute('SELECT COUNT(*) FROM papers WHERE subscription_id = ?', (subscription_id,))
@@ -277,15 +281,22 @@ def get_subscription_stats(subscription_id: int):
                            MAX(created_at) as last_added
                     FROM papers WHERE subscription_id = ?''', (subscription_id,))
         dates = c.fetchone()
+    finally:
+        papers_conn.close()
+    
+    # ✅ 使用 subscription_templates.db 查询同步历史
+    sync_conn = subscription_service.subscription_manager.get_connection()
+    try:
+        sync_c = sync_conn.cursor()
         
         # 同步统计
-        c.execute('''SELECT COUNT(*) as total_syncs,
+        sync_c.execute('''SELECT COUNT(*) as total_syncs,
                            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_syncs,
                            AVG(papers_new) as avg_new_papers,
                            MAX(sync_started_at) as last_sync
                     FROM subscription_sync_history 
                     WHERE subscription_id = ?''', (subscription_id,))
-        sync_stats = c.fetchone()
+        sync_stats = sync_c.fetchone()
         
         stats = {
             'subscription_info': {
@@ -321,7 +332,7 @@ def get_subscription_stats(subscription_id: int):
             'data': stats
         })
     finally:
-        conn.close()
+        sync_conn.close()
 
 
 @subscription_bp.route('/subscriptions/stats')
@@ -329,6 +340,8 @@ def get_subscription_stats(subscription_id: int):
 @handle_api_error
 def get_subscriptions_batch_stats():
     """批量获取多个订阅的统计（对等feeds批量统计）"""
+    import sqlite3
+    
     subscription_ids_str = request.args.get('subscription_ids', '')
     if not subscription_ids_str:
         return jsonify({
@@ -359,7 +372,9 @@ def get_subscriptions_batch_stats():
             'data': {}
         })
     
-    conn = subscription_service.subscription_manager.get_connection()
+    # ✅ 修复: 使用 papers.db 而不是 subscription_templates.db
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
     try:
         c = conn.cursor()
         
@@ -376,12 +391,17 @@ def get_subscriptions_batch_stats():
                         GROUP BY status''', (subscription_id,))
             status_counts = {row['status']: row['count'] for row in c.fetchall()}
             
-            # 最近同步状态
-            c.execute('''SELECT status, sync_started_at, papers_new
-                        FROM subscription_sync_history 
-                        WHERE subscription_id = ? 
-                        ORDER BY sync_started_at DESC LIMIT 1''', (subscription_id,))
-            last_sync = c.fetchone()
+            # 最近同步状态（从 subscription_templates.db 获取）
+            sync_conn = subscription_service.subscription_manager.get_connection()
+            try:
+                sync_c = sync_conn.cursor()
+                sync_c.execute('''SELECT status, sync_started_at, papers_new
+                            FROM subscription_sync_history 
+                            WHERE subscription_id = ? 
+                            ORDER BY sync_started_at DESC LIMIT 1''', (subscription_id,))
+                last_sync = sync_c.fetchone()
+            finally:
+                sync_conn.close()
             
             stats_result[str(subscription_id)] = {
                 'total_papers': total_papers,
